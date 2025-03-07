@@ -66,9 +66,15 @@ def run_mala(V, gradV, h, T, d, init=lambda: 0.01, key=jax.random.key(4)):
     return x_final
 
 
+def const_init(d, val=0.01):
+    return lambda: val * jnp.ones(shape=(d,))
+
+
 # Use vmap instead of pmap for vectorization on a single device
-def run_multiple_mala(V, gradV, h, T, d, num_runs, init_val=0.01, main_key=jax.random.key(4)):
+def run_multiple_mala(V, gradV, h, T, d, num_runs, init_val=lambda: None, main_key=jax.random.key(4)):
     """Run multiple MALA simulations using vectorization with vmap."""
+    if init_val() is None:
+        init_val = const_init(d)
 
     # Generate keys for each run
     keys = jax.random.split(main_key, num_runs)
@@ -95,7 +101,7 @@ def run_mala_simple(V, gradV, h, T, d, init_val, key):
     rand_unifs = jax.random.uniform(key=key2, shape=(sim_length,))
 
     # Initialize the state
-    x = jnp.array(init_val, dtype=jnp.float32).reshape(d)
+    x = jnp.array(init_val(), dtype=jnp.float32).reshape(d)
 
     # Simple loop
     for t in range(sim_length):
