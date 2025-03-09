@@ -2,7 +2,9 @@ import jax
 import jax.numpy as jnp
 import scipy.integrate as spi
 
-
+# TODO:
+# 1. Slightly clumsy implementation on passing functions and scipy arguments
+# 2. default behavior for functions like density is really a 'get' function, make the change?
 class GibbsMeasure:
 
     def __init__(self, name, potential, dim, state_space, normalization=None):
