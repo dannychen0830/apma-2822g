@@ -21,20 +21,25 @@ class GibbsMeasure:
             # set default domain to be [-5, 5]^dim
             if domain is None:
                 domain = self.dim * ((-5, 5),)
-            self.normalization = spi.nquad(lambda *x: self.unnormalized_density()(jnp.array(x)), domain)
+            integral_output = spi.nquad(lambda *x: self.unnormalized_density()(jnp.array(x)), domain)
+
+            self.normalization = integral_output[0]
+            return self.normalization, integral_output[1]
         else:
             raise ValueError('do not recognize state space!')
 
     def density(self):
         if self.normalization is None:
             raise ValueError('normalization not computed yet!')
-        return lambda x: self.unnormalized_density(x) / self.normalization
+        return lambda x: self.unnormalized_density()(x) / self.normalization
 
     def compute_moments(self, order, domain=None):
         if self.state_space == 'reals':
             if domain is None:
                 domain = self.dim * ((-5, 5),)
+
             def integrand(x):
                 return jnp.prod(jnp.power(x, order)) * self.density()(x)
-            print(integrand(jnp.array([1, 2])))
-            return spi.nquad(integrand, domain)
+
+            integral_output = spi.nquad(lambda *x: integrand(jnp.array(x)), domain)
+            return integral_output[0], integral_output[1]
