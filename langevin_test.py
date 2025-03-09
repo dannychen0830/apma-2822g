@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import langevin
 import numpy as np
 import os
+import langevin
 import gibbs_measure as gm
 import time
 
@@ -35,7 +35,7 @@ def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambd
     print(f"Simulation completed in {elapsed:.2f} seconds")
 
     # Save samples to file
-    output_file = f"{gibbs_measure.name}_samples.npy"
+    output_file = f"./data/{gibbs_measure.name}_samples.npy"
     with open(output_file, 'wb') as f:
         np.save(f, samples_np)
     print(f"Samples saved to {os.path.abspath(output_file)}")
@@ -116,14 +116,14 @@ def visualize_results(samples, gibbs_measure, show_plot=True):
     ax1.view_init(elev=30, azim=30)
 
     plt.tight_layout()
-    plt.savefig(f"{gibbs_measure.name}_comparison_3d.png", dpi=300)
+    plt.savefig(f"./data/{gibbs_measure.name}_comparison_3d.png", dpi=300)
     if show_plot:
         plt.show()
 
 
 if __name__ == '__main__':
     # Set run parameters
-    generate_new_data = True
+    generate_new_data = False
     show_plot = True
     # gibbs_measure = gm.GibbsMeasure('gaussian', lambda x: jnp.sum(x ** 2) / 2, 2, 'reals')
     gibbs_measure = gm.GibbsMeasure('double_well', lambda x: jnp.sum(x ** 4) - jnp.sum(x ** 2), 2, 'reals')
@@ -133,7 +133,7 @@ if __name__ == '__main__':
 
     else:
         # Load previously generated data
-        samples = np.load(f"{gibbs_measure.name}_samples.npy")
+        samples = np.load(f"./data/{gibbs_measure.name}_samples.npy")
 
     # Visualize loaded results
     visualize_results(samples, gibbs_measure, show_plot=show_plot)
