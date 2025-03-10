@@ -5,7 +5,8 @@ import itertools as it
 
 
 @pytest.mark.parametrize(
-    'dim_list', [(1,), (2,)]
+    'dim_list', [(1,),
+                 (2,)]
 )
 def test_gibbs_measure(dim_list):
     for d in dim_list:

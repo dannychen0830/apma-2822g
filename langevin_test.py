@@ -1,11 +1,12 @@
-import jax
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import langevin
+from langevin import *
+from mcmc import *
 import gibbs_measure as gm
 import time
+import pytest
+import itertools as it
 
 
 def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambda: None):
@@ -24,8 +25,7 @@ def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambd
     print(f"Running {num_samples} MALA simulations...")
 
     # Run the parallelized implementation
-    samples = langevin.run_multiple_mala(gibbs_measure.potential, gradV, h, T, d, num_samples,
-                                         init_val=init_val, main_key=key)
+    samples = vmap_multiple_run(vmap_run_mala_handle(gibbs_measure, h, T, d, init_val), num_samples, key)
 
     # Convert to numpy array
     samples_np = np.array(samples)
@@ -123,8 +123,8 @@ def visualize_results(samples, gibbs_measure, show_plot=True):
 
 if __name__ == '__main__':
     # Set run parameters
-    generate_new_data = False
-    show_plot = True
+    generate_new_data = True
+    show_plot = False
     # gibbs_measure = gm.GibbsMeasure('gaussian', lambda x: jnp.sum(x ** 2) / 2, 2, 'reals')
     gibbs_measure = gm.GibbsMeasure('double_well', lambda x: jnp.sum(x ** 4) - jnp.sum(x ** 2), 2, 'reals')
 
@@ -137,8 +137,6 @@ if __name__ == '__main__':
 
     # Visualize loaded results
     visualize_results(samples, gibbs_measure, show_plot=show_plot)
-
-    # test whether moments match
     order_list = [[1, 0], [0, 1], [1, 1], [2, 0], [0, 2]]
     for order in order_list:
         emp_moment = np.mean(np.prod(np.power(samples, np.array(order)), axis=1))
