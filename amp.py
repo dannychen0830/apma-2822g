@@ -4,10 +4,11 @@ import matplotlib as mlt
 
 # Using the SK Hamiltonian on the N-Sphere
 
-N = 100
+N = 10
 
 # Initialize Gaussian Matrix
 A = np.random.randn(N, N)
+A = np.eye(N)
 
 # Symmetrizes the Matrix A
 G = (A + A.T)/2
@@ -37,7 +38,7 @@ def gradH(s):
 
     return L
 
-def gradL(s):
+def grad_log(s):
     """
     Computes the derivative of Log (cf. Eq. 2.5).
 
@@ -83,10 +84,10 @@ def gradF(s, y):
     An array which represents the evaluation of the gradient of N at (s; y).
     """
 
-    return gradH(s) + y + (N/2) * (gradT(s) + gradL(s))
+    return gradH(s) + y + (N/2) * (gradT(s) + grad_log(s))
 
 # AMP Iteration
-def amp(K, t, y):
+def amp(gradH, K, t, y):
     """
     Computes an AMP iteration.
 
@@ -125,7 +126,7 @@ def amp(K, t, y):
 
     return M
 
-def ngd(X, K, z, y):
+def ngd(gradF, X, K, z, y):
     """
     Computes a NGD iteration.
 
@@ -145,3 +146,13 @@ def ngd(X, K, z, y):
         L.append(L[i] - z * gradF(L[i], y))
 
     return L
+
+
+def compute_approx_mean(gradH, gradF, y, t, num_amp_steps, num_gd_steps, gd_step_size):
+    m = amp(gradH, num_amp_steps, t, y)
+    u = ngd(gradF, m[-1], num_gd_steps, gd_step_size, y)
+    return u[-1]
+
+
+test = compute_approx_mean(gradH, gradF, np.ones(shape=(N,)) / np.sqrt(N), 100, 10000, 1000, 0.01)
+print(f'output = {test}, it has norm {np.linalg.norm(test)}')
