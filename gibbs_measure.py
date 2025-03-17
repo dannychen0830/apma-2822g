@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
 import scipy.integrate as spi
+from misc import _spherical_to_cartesian, _spherical_jacobian, _get_sphere_integration_limits, _integrate_over_sphere
+from scipy.special import gamma
 
-# TODO:
-# 1. Slightly clumsy implementation on passing functions and scipy arguments
-# 2. default behavior for functions like density is really a 'get' function, make the change?
+
 class GibbsMeasure:
 
     def __init__(self, name, potential, dim, state_space, normalization=None):
@@ -12,7 +12,7 @@ class GibbsMeasure:
         self.potential = potential
         self.dim = dim
         self.state_space = state_space
-        self.normalization = None
+        self.normalization = normalization
 
     def unnormalized_density(self):
         return lambda x: jnp.exp(-self.potential(x))
@@ -25,6 +25,11 @@ class GibbsMeasure:
                 domain = self.dim * ((-5, 5),)
             integral_output = spi.nquad(lambda *x: self.unnormalized_density()(jnp.array(x)), domain)
 
+            self.normalization = integral_output[0]
+            return self.normalization, integral_output[1]
+        elif self.state_space == 'sphere':
+            # Integrate the unnormalized density over the sphere
+            integral_output = _integrate_over_sphere(self.unnormalized_density(), self.dim)
             self.normalization = integral_output[0]
             return self.normalization, integral_output[1]
         else:
@@ -45,3 +50,11 @@ class GibbsMeasure:
 
             integral_output = spi.nquad(lambda *x: integrand(jnp.array(x)), domain)
             return integral_output[0], integral_output[1]
+
+        if self.state_space == 'sphere':
+            # Define the moment function
+            def moment_func(x):
+                return jnp.prod(jnp.power(x, jnp.array(order))) * self.density()(x)
+
+            # Integrate the moment function over the sphere
+            return _integrate_over_sphere(moment_func, self.dim)
