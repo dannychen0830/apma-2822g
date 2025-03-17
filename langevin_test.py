@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import jax.numpy as jnp
 import os
 from langevin import *
 from mcmc import *
@@ -9,7 +10,7 @@ import pytest
 import itertools as it
 
 
-def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambda: None):
+def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=None, spherical=False):
     """Run a test with the given potential function."""
     print(f"\n=== Running test for {gibbs_measure.name} potential ===")
 
@@ -25,7 +26,10 @@ def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambd
     print(f"Running {num_samples} MALA simulations...")
 
     # Run the parallelized implementation
-    samples = vmap_multiple_run(vmap_run_mala_handle(gibbs_measure, h, T, d, init_val), num_samples, key)
+    if spherical:
+        samples = vmap_multiple_run(vmap_run_sphere_mala_handle(gibbs_measure, h, T, d, init_val), num_samples, key)
+    else:
+        samples = vmap_multiple_run(vmap_run_mala_handle(gibbs_measure, h, T, d, init_val), num_samples, key)
 
     # Convert to numpy array
     samples_np = np.array(samples)
@@ -35,7 +39,8 @@ def run_test(gibbs_measure, h=0.01, T=10, d=2, num_samples=10000, init_val=lambd
     print(f"Simulation completed in {elapsed:.2f} seconds")
 
     # Save samples to file
-    output_file = f"./data/{gibbs_measure.name}_samples.npy"
+    output_file = f"./data/spherical_{gibbs_measure.name}_samples.npy" if spherical \
+        else f"./data/{gibbs_measure.name}_samples.npy"
     with open(output_file, 'wb') as f:
         np.save(f, samples_np)
     print(f"Samples saved to {os.path.abspath(output_file)}")
@@ -89,7 +94,9 @@ def visualize_results(samples, gibbs_measure, show_plot=True):
     X_surf, Y_surf = np.meshgrid(x_surf, y_surf)
 
     # Compute theoretical density
-    gibbs_measure.compute_normalization()
+    if gibbs_measure.normalization is None:
+        gibbs_measure.compute_normalization()
+
     density = gibbs_measure.density()
     density_unfold = lambda *x: float(density(jnp.array(x)))
     Z_surf = np.zeros(X_surf.shape)
@@ -110,13 +117,13 @@ def visualize_results(samples, gibbs_measure, show_plot=True):
     ax1.set_xlabel('x')
     ax1.set_ylabel('y')
     ax1.set_zlabel('Density')
-    ax1.set_title(f'3D Comparison: {gibbs_measure.name} (Blue: Empirical, Surface: Theoretical)')
+    ax1.set_title(f'Histogram against theoretical density for {gibbs_measure.name} potential on {gibbs_measure.state_space}')
 
     # Adjust viewing angle
     ax1.view_init(elev=30, azim=30)
 
     plt.tight_layout()
-    plt.savefig(f"./data/{gibbs_measure.name}_comparison_3d.png", dpi=300)
+    plt.savefig(f"./data/{gibbs_measure.name}_comparison_{gibbs_measure.state_space}.png", dpi=300)
     if show_plot:
         plt.show()
 
@@ -124,16 +131,24 @@ def visualize_results(samples, gibbs_measure, show_plot=True):
 if __name__ == '__main__':
     # Set run parameters
     generate_new_data = True
-    show_plot = False
-    # gibbs_measure = gm.GibbsMeasure('gaussian', lambda x: jnp.sum(x ** 2) / 2, 2, 'reals')
-    gibbs_measure = gm.GibbsMeasure('double_well', lambda x: jnp.sum(x ** 4) - jnp.sum(x ** 2), 2, 'reals')
+    show_plot = True
+    spherical = True
+    # gibbs_measure = gm.GibbsMeasure('gaussian',
+    #                                 lambda x: jnp.sum(x ** 2) / 2, 2,
+    #                                 'sphere' if spherical else 'reals',
+    #                                 )
+    gibbs_measure = gm.GibbsMeasure('double_well',
+                                    lambda x: jnp.sum(x ** 4) - jnp.sum(x ** 2),
+                                    2,
+                                    'reals')
 
     if generate_new_data:
-        samples = run_test(gibbs_measure, h=0.01, T=20, d=2, num_samples=10000)
+        samples = run_test(gibbs_measure, h=0.01, T=20, d=2, num_samples=10000, spherical=spherical)
 
     else:
         # Load previously generated data
-        samples = np.load(f"./data/{gibbs_measure.name}_samples.npy")
+        samples = np.load(f"./data/spherical_{gibbs_measure.name}_samples.npy") if spherical \
+            else np.load(f"./data/{gibbs_measure.name}_samples.npy")
 
     # Visualize loaded results
     visualize_results(samples, gibbs_measure, show_plot=show_plot)
@@ -141,4 +156,5 @@ if __name__ == '__main__':
     for order in order_list:
         emp_moment = np.mean(np.prod(np.power(samples, np.array(order)), axis=1))
         theory_moment, _ = gibbs_measure.compute_moments(np.array(order))
+        print(f"Empirical moment: {emp_moment}, theoretical moment: {theory_moment}")
         assert np.isclose(emp_moment, theory_moment, atol=0.03)
