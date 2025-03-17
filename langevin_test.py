@@ -140,7 +140,7 @@ if __name__ == '__main__':
     gibbs_measure = gm.GibbsMeasure('double_well',
                                     lambda x: jnp.sum(x ** 4) - jnp.sum(x ** 2),
                                     2,
-                                    'reals')
+                                    'sphere' if spherical else 'reals')
 
     if generate_new_data:
         samples = run_test(gibbs_measure, h=0.01, T=20, d=2, num_samples=10000, spherical=spherical)

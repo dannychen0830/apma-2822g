@@ -2,6 +2,8 @@ import jax.numpy as jnp
 import scipy.integrate as spi
 
 
+# TODO: unit test integrators
+
 def _spherical_to_cartesian(phis, dim):
     """Convert spherical coordinates to Cartesian coordinates on the unit sphere.
 
