@@ -132,7 +132,7 @@ if __name__ == '__main__':
     # Set run parameters
     generate_new_data = True
     show_plot = True
-    spherical = True
+    spherical = False
     # gibbs_measure = gm.GibbsMeasure('gaussian',
     #                                 lambda x: jnp.sum(x ** 2) / 2, 2,
     #                                 'sphere' if spherical else 'reals',

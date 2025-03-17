@@ -23,7 +23,7 @@ def project_to_tangent(x, v):
 
 def vmap_run_mala_handle(gibbs_measure, h, T, d, init_val=None):
     """Run multiple MALA simulations using vectorization with vmap."""
-    if init_val() is None:
+    if init_val is None:
         init_val = const_init(d)
 
     V = gibbs_measure.potential
@@ -111,17 +111,9 @@ def run_sphere_mala(V, riemannian_gradV, h, T, d, init_val, key):
         # Project pre-generated noise to tangent space
         base_noise = rand_norms[t]
         tangent_noise = project_to_tangent(x, base_noise)
-        # Normalize to ensure correct variance
-        noise_norm = jnp.sqrt(jnp.sum(tangent_noise ** 2))
-        # Avoid division by zero
-        normalized_noise = jnp.where(
-            noise_norm > 1e-10,
-            tangent_noise / noise_norm,
-            jnp.zeros_like(tangent_noise)
-        )
 
         # Add scaled noise in tangent space
-        y_pre = mean + jnp.sqrt(2 * h) * normalized_noise
+        y_pre = mean + jnp.sqrt(2 * h) * tangent_noise
 
         # Project back to sphere
         y = normalize(y_pre)
