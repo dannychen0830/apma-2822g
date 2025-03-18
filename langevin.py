@@ -6,6 +6,10 @@ def const_init(d, val=0.01):
     return lambda key: val * jnp.ones(shape=(d,))
 
 
+def normal_init(d, scale=0.01):
+    return lambda key: scale * jax.random.normal(key=key, shape=(d,))
+
+
 def sphere_init(d):
     """Initialize a point on the unit sphere in d dimensions."""
     return lambda key: normalize(jax.random.normal(key=key, shape=(d,)))
@@ -49,7 +53,7 @@ def vmap_run_sphere_mala_handle(gibbs_measure, h, T, d, init_val=None):
     return lambda key: run_sphere_mala(V, riemannian_gradV, h, T, d, init_val, key)
 
 
-def run_mala(V, gradV, h, T, d, init_val, key):
+def run_mala(V, gradV, h, T, d, init_val, key, verbose=False):
     """Simplified version for use with vmap."""
     sim_length = int(T / h) + 1
 
@@ -59,10 +63,12 @@ def run_mala(V, gradV, h, T, d, init_val, key):
     rand_unifs = jax.random.uniform(key=key2, shape=(sim_length,))
 
     # Initialize the state
-    x = jnp.array(init_val(key_init), dtype=jnp.float32).reshape(d)
+    x = init_val(key_init)
 
     # Simple loop
     for t in range(sim_length):
+        if verbose and t % 1000 == 0:
+            print(f'Step {t} out of {sim_length} steps!')
         # Propose new state
         grad_x = gradV(x)
         mean = x - h * grad_x
