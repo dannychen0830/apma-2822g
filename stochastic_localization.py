@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-    from functools import partial
 from langevin import run_mala, normal_init
 
 
@@ -91,7 +90,33 @@ def approximate_mean_computation(y, t_param, k_param, g_matrix, beta, n):
     return m
 
 
-def subroutine(key, k_param, s_param, t_param, g_matrix, beta, n, verbose=True):
+def gradT(z, n):
+    return -2 * (1 - l2n(z, n)) * z
+
+
+def gradL(z, n):
+    return z / (1 - l2n(z, n))
+
+
+def gradF(z, y, g_matrix, n):
+    return gradH(g_matrix, z, n) + y + gradT(z, n) + gradL(z, n)
+
+
+def gradH(g_matrix, z, n):
+    return 2 * g_matrix @ z / jnp.sqrt(n)
+
+
+def grad_tap(z, y, n, g_matrix):
+    return gradH(g_matrix, z, n) + y + gradT(z, n) + gradL(z, n)
+
+
+def dg_tap_energy(init_state, y, n, g_matrix, learning_rate, k_param):
+    for k in range(k_param):
+        init_state = init_state - learning_rate * grad_tap(init_state, y, n, g_matrix)
+    return init_state
+
+
+def subroutine(key, k_param, s_param, t_param, g_matrix, beta, eta, n, verbose=True):
     """Run the subroutine to compute the final y.
 
     Pre-generates all random noise for efficiency.
@@ -112,6 +137,8 @@ def subroutine(key, k_param, s_param, t_param, g_matrix, beta, n, verbose=True):
         m = approximate_mean_computation(e, s_param * jnp.array(i, dtype=jnp.float32),
                                          k_param, g_matrix, beta, n)
 
+        m = dg_tap_energy(m, e, n, g_matrix, eta, k_param)
+
         # Get the pre-generated noise for this step
         w = noise[i]
 
@@ -122,8 +149,8 @@ def subroutine(key, k_param, s_param, t_param, g_matrix, beta, n, verbose=True):
     return e
 
 
-def run_stoch_loc(n, beta, seed=0, k=35, s=None, t=None, t_mala=20, h=0.01,
-                  run_subroutine=True, verbose=True):
+def run_stoch_loc(g_matrix, n, beta, eta, k=35, s=None, t=None, t_mala=20, h=0.01,
+                  verbose=True, key=jax.random.PRNGKey(9)):
     """
     Main function to run stochastic localization algorithm.
 
@@ -149,26 +176,19 @@ def run_stoch_loc(n, beta, seed=0, k=35, s=None, t=None, t_mala=20, h=0.01,
         t = 20 * n
 
     # Initialize keys for all random operations
-    master_key = jax.random.PRNGKey(seed)
-    keys = jax.random.split(master_key, 3)
-    g_key, subroutine_key, mala_key = keys
+    keys = jax.random.split(key, 2)
+    subroutine_key, mala_key = keys
 
-    # Generate G matrix
-    g_matrix = generate_symmetric_matrix(n, beta, g_key)
-
-    # Run the subroutine if required
-    if run_subroutine:
-        if verbose:
-            print("Running subroutine...")
-        final_y = subroutine(subroutine_key, k, s, t, g_matrix, beta, n, verbose)
-    else:
-        final_y = jnp.zeros(n)
+    # Run the subroutine
+    if verbose:
+        print("Running subroutine...")
+    final_y = subroutine(subroutine_key, k, s, t, g_matrix, beta, eta, n, verbose)
 
     if verbose:
         print("Running MALA...")
 
     # Split the key again for orthogonal basis generation
-    ortho_key = jax.random.fold_in(master_key, 103)  # Using a different fold_in value
+    ortho_key = jax.random.fold_in(key, 103)  # Using a different fold_in value
 
     # Create the potential function for Gibbs measure
     potential_fn = lambda z: vp_function(z, final_y, t_mala, ortho_key, g_matrix, n)
@@ -188,20 +208,21 @@ def run_stoch_loc(n, beta, seed=0, k=35, s=None, t=None, t_mala=20, h=0.01,
         verbose=verbose
     )
 
-    return sample
+    if verbose:
+        print("MALA completed.")
+
+    return projection(sample, final_y, ortho_key, n)
 
 
-def test_alg():
-    """Test function that uses the original global variables."""
-    n = 20
-    beta = 0.25
-    seed = 50
-
-    # Run with default parameters
-    result = run_stoch_loc(n=n, beta=beta, seed=seed, verbose=True)
-    print(result)
-    return result
+def vmap_run_stoch_loc_handle(g_matrix, n, beta, eta=0.001, k=35, s=None, t=None, t_mala=20, h=0.01):
+    """Run multiple MALA simulations using vectorization with vmap."""
+    return lambda key: run_stoch_loc(g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=True, key=key)
 
 
-if __name__ == "__main__":
-    test_alg()
+def vmap_run_stoch_loc_handle_jit(g_matrix, n, beta, eta=0.001, k=35, s=None, t=None, t_mala=20, h=0.01):
+    """Run multiple MALA simulations using vectorization with vmap."""
+    # Apply jit for better performance
+    jitted_run = jax.jit(lambda key: run_stoch_loc(
+        g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=True, key=key
+    ))
+    return jitted_run
