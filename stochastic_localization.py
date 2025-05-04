@@ -216,13 +216,17 @@ def run_stoch_loc(g_matrix, n, beta, eta, k=35, s=None, t=None, t_mala=20, h=0.0
 
 def vmap_run_stoch_loc_handle(g_matrix, n, beta, eta=0.001, k=35, s=None, t=None, t_mala=20, h=0.01):
     """Run multiple MALA simulations using vectorization with vmap."""
-    return lambda key: run_stoch_loc(g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=True, key=key)
+    return lambda key: run_stoch_loc(g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=False, key=key)
+
+
+def mp_run_stoch_loc_handle(key, g_matrix, n, beta, eta, k, s, t, t_mala, h):
+    return run_stoch_loc(g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=False, key=key)
 
 
 def vmap_run_stoch_loc_handle_jit(g_matrix, n, beta, eta=0.001, k=35, s=None, t=None, t_mala=20, h=0.01):
     """Run multiple MALA simulations using vectorization with vmap."""
     # Apply jit for better performance
     jitted_run = jax.jit(lambda key: run_stoch_loc(
-        g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=True, key=key
+        g_matrix, n, beta, eta, k, s, t, t_mala, h, verbose=False, key=key
     ))
     return jitted_run

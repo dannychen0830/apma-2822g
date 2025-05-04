@@ -2,30 +2,14 @@ import os
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
 from stochastic_localization import *
+from langevin import *
 from mcmc import *
 import gibbs_measure as gm
 import time
 from misc import *
 
 
-def test_alg():
-    """Test function that uses the original global variables."""
-    n = 20
-    beta = 0.25
-    eta = 0.001
-    key = jax.random.PRNGKey(0)
-
-    g_key, alg_key = jax.random.split(key, 2)
-    g_matrix = generate_symmetric_matrix(n, beta, g_key)
-
-
-    # Run with default parameters
-    result = run_stoch_loc(g_matrix, n=n, beta=beta, eta= eta, key=alg_key, verbose=True)
-    print(result)
-    return result
-
-
-def test_uniform(num_samples, n=20, beta=0.25, eta=0.001, batch_size=None, use_pmap=False):
+def test_uniform(num_samples, num_processes=4, n=20, beta=0.25, eta=0.001, k=35, s=None, t=None, t_mala=2, h=0.01):
     """ test stochatic localization with disorder g_matrix be the identity matrix
 
     Args:
@@ -36,9 +20,6 @@ def test_uniform(num_samples, n=20, beta=0.25, eta=0.001, batch_size=None, use_p
         batch_size: Size of batches for processing (None means process all at once)
         use_pmap: Whether to use pmap for multi-device parallelism
     """
-    if use_pmap:
-        print(f"JAX devices available: {jax.device_count()}")
-        print(f"Device types: {[d.device_kind for d in jax.devices()]}")
 
     key = jax.random.PRNGKey(int(time.time()) % 100000)
 
@@ -50,13 +31,20 @@ def test_uniform(num_samples, n=20, beta=0.25, eta=0.001, batch_size=None, use_p
     print(f"Running {num_samples} Stochastic Localization simulations with uniform disorder (identity matrix)...")
 
     # Use enhanced vmap_multiple_run function with batch_size and use_pmap options
-    samples = vmap_multiple_run(
-        vmap_run_stoch_loc_handle(g_matrix, n, beta, eta),
-        num_samples,
-        main_key=alg_key,
-        batch_size=batch_size,
-        use_pmap=use_pmap
-    )
+    if num_processes > 1:
+        samples = mp_multiple_run(
+            mp_run_stoch_loc_handle,
+            num_samples,
+            (g_matrix, n, beta, eta, k, s, t, t_mala, h),
+            main_key=alg_key,
+            num_processes=num_processes,
+        )
+    else:
+        samples = vmap_multiple_run(
+            vmap_run_stoch_loc_handle(g_matrix, n, beta, eta),
+            num_samples,
+            main_key=alg_key
+        )
 
     # end timing
     elapsed = time.time() - start_time
@@ -64,7 +52,7 @@ def test_uniform(num_samples, n=20, beta=0.25, eta=0.001, batch_size=None, use_p
 
     samples_np = np.array(samples)
     # Save samples to file
-    output_file = f"./data/stoch_loc_uniform_samples.npy"
+    output_file = f"data/stoch_loc_uniform_samples_n_{n}_num_samples_{num_samples}.npy"
     np.save(output_file, samples_np)
     print(f"Samples saved to {os.path.abspath(output_file)}")
 
@@ -112,7 +100,7 @@ def localization_test(num_samples, g_matrix, n, beta, eta, k=35, s=None, t=None,
         verbose=True
     )
 
-    samples = vmap_multiple_run(mala_handle, num_samples, main_key=mala_key, batch_size=None, use_pmap=False)
+    samples = vmap_multiple_run(mala_handle, num_samples, main_key=mala_key)
 
     samples_np = np.array(samples)
     # Save samples to file
@@ -132,22 +120,38 @@ def localization_test(num_samples, g_matrix, n, beta, eta, k=35, s=None, t=None,
     return samples_np
 
 
+def sphere_projection_density(x, dim):
+    return jax.scipy.special.gamma(dim / 2) / (jnp.sqrt(jnp.pi) * jax.scipy.special.gamma((dim - 1) / 2)) * (1 - jnp.sum(x ** 2)) ** ((dim - 3) / 2)
+
+
 if __name__ == "__main__":
     n = 20
+    num_samples = 1000
     gibbs_measure = gm.GibbsMeasure('gaussian',
                                     lambda x: jnp.sum(x ** 2) / 2,
                                     n,
                                     'sphere',
                                     )
 
-    samples = test_uniform(num_samples=1000, n=n, beta=0.25, eta=0.001, use_pmap=True, batch_size=4)
+    test_samples = vmap_multiple_run(vmap_run_sphere_mala_handle(gibbs_measure, 0.01, 10, n), 5000)
+
+    # samples = test_uniform(num_samples=num_samples, n=n, num_processes=6, beta=0.25, eta=0.001)
     # print('start visualization')
     # visualize_results(samples, gibbs_measure, show_plot=True)
 
     # localization_test(1000, jnp.eye(n), n, beta=0.25, eta=0.001, k=35, s=None, t=None, t_mala=20, h=0.01)
-    #
-    samples = np.load('./data/stoch_loc_uniform_samples.npy')
+
+    samples = np.load(f'data/stoch_loc_uniform_samples_n_{n}_num_samples_{num_samples}.npy')
+    print(np.count_nonzero(np.isnan(samples)))  # Check for NaN values
+    samples_no_nan = samples[~np.isnan(samples).any(axis=1)]  # Remove rows with NaN values
     identity_matrix = jnp.eye(n)
-    direction_list = [identity_matrix[i,:] for i in range(n-1)]
-    direction_names = [i for i in range(n-1)]
-    plot_projection(samples, direction_list, gm.GibbsMeasure('localization_test_coordinates', None, None, None), direction_name=direction_names, show_plot=True)
+    direction_list = [identity_matrix[i,:] for i in range(min(n, 10))]
+    direction_names = [i for i in range(min(n, 10))]
+    plot_projection(samples_no_nan,
+                    direction_list,
+                    gm.GibbsMeasure('localization_test_coordinates', None, None, None),
+                    direction_name=direction_names,
+                    show_plot=True,
+                    test_sample=test_samples,
+                    save_fig=f"./data/stoch_loc_unif_test_n_{n}_num_sample_{num_samples}.png",
+                    density_functions=[lambda x: sphere_projection_density(x, dim=n) for i in range(n)])
